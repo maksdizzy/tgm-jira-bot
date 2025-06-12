@@ -421,7 +421,8 @@ class JiraClient:
                 return TicketResponse(
                     success=True,
                     ticket_key=ticket_key,
-                    ticket_url=ticket_url
+                    ticket_url=ticket_url,
+                    ticket_title=ticket_data.title
                 )
             else:
                 error_msg = f"Failed to create ticket: {response.status_code} - {response.text}"

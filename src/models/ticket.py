@@ -118,13 +118,17 @@ class TicketResponse(BaseModel):
     success: bool = Field(..., description="Whether ticket creation was successful")
     ticket_key: Optional[str] = Field(None, description="Jira ticket key (e.g., PROJ-123)")
     ticket_url: Optional[str] = Field(None, description="Direct URL to the ticket")
+    ticket_title: Optional[str] = Field(None, description="Ticket title/summary")
     error_message: Optional[str] = Field(None, description="Error message if creation failed")
     
     @property
     def formatted_response(self) -> str:
         """Generate a formatted response message for Telegram."""
         if self.success and self.ticket_key and self.ticket_url:
-            return f"✅ Ticket created successfully!\n\n🎫 **{self.ticket_key}**\n🔗 [View Ticket]({self.ticket_url})"
+            if self.ticket_title:
+                return f"✅ Ticket created successfully!\n\n📋 **{self.ticket_key}**: {self.ticket_title}\n🔗 [View Ticket]({self.ticket_url})"
+            else:
+                return f"✅ Ticket created successfully!\n\n🎫 **{self.ticket_key}**\n🔗 [View Ticket]({self.ticket_url})"
         elif self.error_message:
             return f"❌ Failed to create ticket: {self.error_message}"
         else:
