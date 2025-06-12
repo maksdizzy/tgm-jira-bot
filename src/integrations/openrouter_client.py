@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 class OpenRouterClient:
     """Client for OpenRouter LLM API integration."""
     
-    def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1", model: str = "openai/gpt-4-turbo"):
+    def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1", model: str = "google/gemini-2.5-flash-preview-05-20"):
         self.api_key = api_key
         self.base_url = base_url
         self.model = model

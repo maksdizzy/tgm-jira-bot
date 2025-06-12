@@ -1,12 +1,31 @@
 # TG-Jira Bot
 
-A Telegram bot that monitors chat messages for "#ticket" hashtags and automatically creates Jira tickets using OpenRouter LLM for intelligent content processing.
+A production-ready Telegram bot that monitors chat messages for "#ticket" hashtags and automatically creates Jira tickets using OpenRouter LLM for intelligent content processing.
+
+## 🚀 Latest Release - v1.0.0 (Stable)
+
+**Production-ready release** with comprehensive testing and validation completed.
+
+### ✅ Core Features Delivered
+- **Telegram Bot Integration**: Webhook-based real-time message processing with #ticket hashtag detection
+- **OpenRouter LLM Processing**: Google Gemini 2.5 Flash integration for intelligent ticket content extraction and structuring
+- **Jira Cloud OAuth 2.0**: Secure authentication with accessible resources lookup and automatic token refresh
+- **FastAPI Web Server**: Production-ready server with comprehensive health checks and monitoring endpoints
+- **Docker Containerization**: Multi-stage builds optimized for production deployment
+- **Structured Logging**: JSON format with correlation IDs for comprehensive observability
+
+### 🔧 Key Technical Achievements
+- **OAuth 2.0 Flow**: Fully implemented with proper Jira Cloud endpoints and token management
+- **Simplified Ticket Creation**: Streamlined process handling project, summary, issue type, and description
+- **Comprehensive Error Handling**: User-friendly error messages with detailed logging for debugging
+- **Pydantic Data Validation**: Type-safe models ensuring data integrity throughout the application
+- **Async/Await Architecture**: High-performance asynchronous processing for optimal scalability
 
 ## Architecture Overview
 
 This bot integrates three main services:
 - **Telegram Bot API** for message monitoring
-- **OpenRouter LLM** (GPT-4 Turbo) for intelligent ticket content processing
+- **OpenRouter LLM** (Google Gemini 2.5 Flash) for intelligent ticket content processing
 - **Jira Cloud API** with OAuth 2.0 for secure ticket creation
 
 ```mermaid
@@ -31,16 +50,17 @@ graph TB
 
 ### Core Functionality
 - **Hashtag Detection**: Monitors for "#ticket" in any position within messages
-- **Intelligent Processing**: Uses GPT-4 Turbo to extract structured ticket information
+- **Intelligent Processing**: Uses Google Gemini 2.5 Flash to extract structured ticket information
 - **Automatic Ticket Creation**: Creates Jira tickets with processed content
 - **User Feedback**: Responds with ticket links and confirmation
 
 ### LLM Processing Capabilities
-- **Smart Title Generation**: Creates concise, descriptive ticket titles
-- **Detailed Descriptions**: Expands brief messages into comprehensive descriptions
-- **Priority Assessment**: Automatically assigns priority levels (High/Medium/Low)
-- **Issue Type Classification**: Categorizes as Bug/Task/Story/etc.
-- **Label Extraction**: Identifies relevant labels and components
+- **Smart Title Generation**: Creates concise, descriptive ticket titles (max 100 characters)
+- **Detailed Descriptions**: Expands brief messages into comprehensive descriptions with context
+- **Priority Assessment**: Automatically assigns priority levels (Highest/High/Medium/Low/Lowest)
+- **Issue Type Classification**: Categorizes as Bug/Task/Story/Epic/Improvement/New Feature
+- **Label Extraction**: Identifies relevant labels and components from message content
+- **Fallback Processing**: Graceful degradation when LLM parsing fails
 
 ### Technical Features
 - **OAuth 2.0 Authentication**: Secure Jira integration with automatic token refresh
@@ -71,20 +91,26 @@ tgm-jira-bot/
 │   └── utils/
 │       ├── __init__.py
 │       ├── logger.py           # Structured logging setup
-│       └── health.py           # Health check endpoints
+│       ├── health.py           # Health check endpoints
+│       ├── media_processor.py  # Media file processing utilities
+│       └── token_storage.py    # OAuth token management
 ├── tests/
 │   ├── __init__.py
-│   ├── test_bot.py
-│   ├── test_integrations.py
-│   └── test_message_processor.py
+│   └── test_message_processor.py # Message processing unit tests
 ├── config/
 │   ├── logging.yaml            # Logging configuration
 │   └── .env.example            # Environment variables template
 ├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── requirements.txt
-├── requirements-dev.txt
+│   ├── Dockerfile              # Multi-stage production build
+│   └── docker-compose.yml      # Container orchestration
+├── requirements.txt            # Production dependencies
+├── requirements-dev.txt        # Development dependencies
+├── setup.py                    # Automated project setup
+├── run_dev.py                  # Development server launcher
+├── check_auth.py              # OAuth authentication testing
+├── test_fixes.py              # Integration testing utilities
+├── test_jira_oauth.py         # Jira OAuth flow testing
+├── JIRA_OAUTH_SETUP.md        # OAuth setup documentation
 ├── README.md
 └── .gitignore
 ```
@@ -120,7 +146,8 @@ sequenceDiagram
 2. **OpenRouter API Key**
    - Sign up at [OpenRouter](https://openrouter.ai/)
    - Generate an API key
-   - Ensure sufficient credits for GPT-4 Turbo usage
+   - Ensure sufficient credits for Google Gemini 2.5 Flash usage
+   - Default model: `google/gemini-2.5-flash-preview-05-20` (configurable)
 
 3. **Jira Cloud OAuth 2.0 Credentials**
    - Access to a Jira Cloud instance
@@ -140,7 +167,7 @@ sequenceDiagram
 git clone <repository-url>
 cd tgm-jira-bot
 
-# Run automated setup
+# Run automated setup (creates venv, installs dependencies, copies config)
 python setup.py
 
 # Activate virtual environment
@@ -151,6 +178,21 @@ nano .env
 
 # Start development server
 python run_dev.py
+```
+
+### Production Deployment
+```bash
+# Clone and configure
+git clone <repository-url>
+cd tgm-jira-bot
+cp config/.env.example .env
+# Edit .env with production credentials
+
+# Deploy with Docker
+docker-compose up -d
+
+# Verify deployment
+curl http://localhost:8000/health
 ```
 
 ## Installation and Setup
@@ -174,7 +216,7 @@ TELEGRAM_WEBHOOK_URL=https://your-domain.com/webhook
 
 # OpenRouter
 OPENROUTER_API_KEY=your_openrouter_key_here
-OPENROUTER_MODEL=openai/gpt-4-turbo
+OPENROUTER_MODEL=google/gemini-2.5-flash-preview-05-20
 
 # Jira OAuth 2.0
 JIRA_CLOUD_URL=https://your-domain.atlassian.net
@@ -222,7 +264,7 @@ python run_dev.py
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from BotFather | Yes | - |
 | `TELEGRAM_WEBHOOK_URL` | Public URL for webhook endpoint | Yes | - |
 | `OPENROUTER_API_KEY` | OpenRouter API key | Yes | - |
-| `OPENROUTER_MODEL` | LLM model to use | No | `openai/gpt-4-turbo` |
+| `OPENROUTER_MODEL` | LLM model to use | No | `google/gemini-2.5-flash-preview-05-20` |
 | `JIRA_CLOUD_URL` | Jira Cloud instance URL | Yes | - |
 | `JIRA_CLIENT_ID` | OAuth 2.0 Client ID | Yes | - |
 | `JIRA_CLIENT_SECRET` | OAuth 2.0 Client Secret | Yes | - |
@@ -262,12 +304,13 @@ python run_dev.py
 ```
 
 ### LLM Processing
-The bot uses GPT-4 Turbo to intelligently process your message and extract:
-- **Title**: Concise summary of the issue
-- **Description**: Detailed explanation with context
-- **Priority**: Automatically assessed based on content
-- **Issue Type**: Bug, Task, Story, etc.
-- **Labels**: Relevant tags and components
+The bot uses Google Gemini 2.5 Flash via OpenRouter to intelligently process your message and extract:
+- **Title**: Concise summary of the issue (max 100 characters)
+- **Description**: Detailed explanation with context and expanded details
+- **Priority**: Automatically assessed based on content (Highest/High/Medium/Low/Lowest)
+- **Issue Type**: Bug, Task, Story, Epic, Improvement, or New Feature
+- **Labels**: Relevant tags and keywords (max 5)
+- **Components**: Affected system/module names if identifiable
 
 ## Monitoring and Health Checks
 
@@ -366,6 +409,19 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 ### Debug Mode
 Enable debug logging by setting `LOG_LEVEL=DEBUG` in your environment variables.
 
+### Testing OAuth Flow
+Use the provided testing utilities:
+```bash
+# Test Jira OAuth authentication
+python test_jira_oauth.py
+
+# Check authentication status
+python check_auth.py
+
+# Run integration tests
+python test_fixes.py
+```
+
 ## Contributing
 
 1. Fork the repository
@@ -374,6 +430,23 @@ Enable debug logging by setting `LOG_LEVEL=DEBUG` in your environment variables.
 4. Add tests for new functionality
 5. Ensure all tests pass
 6. Submit a pull request
+
+## Production Status
+
+### ✅ Successfully Tested Features
+- **Ticket Creation**: End-to-end ticket creation workflow validated in production
+- **OAuth Authentication**: Fully functional with automatic token refresh
+- **LLM Processing**: Google Gemini 2.5 Flash successfully extracting structured ticket data
+- **API Integrations**: All external API connections working correctly
+- **Error Handling**: Comprehensive error recovery and user feedback
+- **Logging**: Structured JSON logging with correlation IDs operational
+
+### 🔧 Production Deployment Notes
+- Multi-stage Docker builds optimized for production
+- Health check endpoints for container orchestration
+- Structured logging for monitoring and debugging
+- Async/await architecture for high performance
+- Comprehensive error handling with user-friendly messages
 
 ## License
 
