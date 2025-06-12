@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 from requests_oauthlib import OAuth2Session
 from src.models.ticket import TicketData, TicketResponse, JiraTicketPayload
 from src.utils.logger import get_logger
+from src.utils.token_storage import TokenStorage
 
 logger = get_logger(__name__)
 
@@ -33,8 +34,15 @@ class JiraClient:
         self.refresh_token = refresh_token
         self.client = httpx.AsyncClient(timeout=30.0)
         
+        # Token storage for persistence
+        self.token_storage = TokenStorage()
+        
         # Detect if this is Jira Cloud or Data Center
         self.is_cloud = self.cloud_url.endswith('.atlassian.net')
+        
+        # Load saved tokens if not provided
+        if not self.access_token:
+            self._load_saved_tokens()
         
         # OAuth 2.0 endpoints
         if self.is_cloud:
@@ -171,6 +179,9 @@ class JiraClient:
             if self.is_cloud:
                 await self._get_accessible_resources()
             
+            # Save tokens for persistence
+            self._save_tokens()
+            
             logger.info("Successfully exchanged authorization code for tokens")
             return self.access_token, self.refresh_token
             
@@ -226,6 +237,9 @@ class JiraClient:
             if 'refresh_token' in token:
                 self.refresh_token = token['refresh_token']
             
+            # Save tokens for persistence
+            self._save_tokens()
+            
             logger.info("Successfully refreshed access token")
             return self.access_token
             
@@ -271,6 +285,38 @@ class JiraClient:
                 
         except Exception as e:
             logger.error(f"Error getting accessible resources: {e}")
+    
+    def _load_saved_tokens(self) -> None:
+        """Load saved tokens from storage."""
+        try:
+            tokens = self.token_storage.load_tokens('jira')
+            if tokens:
+                self.access_token = tokens.get('access_token')
+                self.refresh_token = tokens.get('refresh_token')
+                self.site_id = tokens.get('site_id')
+                
+                # Update API base if we have site_id for Cloud
+                if self.is_cloud and self.site_id:
+                    self.api_base = f"https://api.atlassian.com/ex/jira/{self.site_id}/rest/api/3"
+                
+                logger.info("Loaded saved Jira tokens")
+        except Exception as e:
+            logger.error(f"Failed to load saved tokens: {e}")
+    
+    def _save_tokens(self) -> None:
+        """Save current tokens to storage."""
+        try:
+            tokens = {
+                'access_token': self.access_token,
+                'refresh_token': self.refresh_token,
+                'site_id': self.site_id,
+                'cloud_url': self.cloud_url,
+                'api_base': self.api_base
+            }
+            self.token_storage.save_tokens('jira', tokens)
+            logger.info("Saved Jira tokens")
+        except Exception as e:
+            logger.error(f"Failed to save tokens: {e}")
     
     async def _make_authenticated_request(
         self,
@@ -394,6 +440,116 @@ class JiraClient:
                 success=False,
                 error_message=error_msg
             )
+    
+    async def upload_attachment(self, ticket_key: str, file_path: str, filename: str) -> bool:
+        """
+        Upload an attachment to a Jira ticket.
+        
+        Args:
+            ticket_key: Jira ticket key (e.g., PROJ-123)
+            file_path: Local path to the file
+            filename: Name for the attachment
+            
+        Returns:
+            True if upload successful
+        """
+        try:
+            logger.info(f"Uploading attachment {filename} to ticket {ticket_key}")
+            
+            # Prepare multipart form data
+            with open(file_path, 'rb') as file:
+                files = {
+                    'file': (filename, file, 'application/octet-stream')
+                }
+                
+                headers = {
+                    "Authorization": f"Bearer {self.access_token}",
+                    "X-Atlassian-Token": "no-check"  # Required for file uploads
+                }
+                
+                # Make upload request
+                response = await self.client.post(
+                    f"{self.api_base}/issue/{ticket_key}/attachments",
+                    files=files,
+                    headers=headers
+                )
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully uploaded attachment {filename} to {ticket_key}")
+                return True
+            else:
+                logger.error(f"Failed to upload attachment: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error uploading attachment {filename}: {e}")
+            return False
+    
+    async def upload_attachments(self, ticket_key: str, attachments: list) -> int:
+        """
+        Upload multiple attachments to a Jira ticket.
+        
+        Args:
+            ticket_key: Jira ticket key
+            attachments: List of MediaAttachment objects with local_path set
+            
+        Returns:
+            Number of successfully uploaded attachments
+        """
+        if not attachments:
+            return 0
+        
+        successful_uploads = 0
+        
+        for attachment in attachments:
+            if not attachment.local_path or not attachment.local_path.exists():
+                logger.warning(f"Skipping attachment {attachment.file_id}: no local file")
+                continue
+            
+            # Use original filename or generate one
+            filename = attachment.file_name or f"{attachment.file_unique_id}{self._get_attachment_extension(attachment)}"
+            
+            if await self.upload_attachment(ticket_key, str(attachment.local_path), filename):
+                attachment.jira_attachment_id = ticket_key  # Store reference
+                successful_uploads += 1
+        
+        logger.info(f"Uploaded {successful_uploads}/{len(attachments)} attachments to {ticket_key}")
+        return successful_uploads
+    
+    def _get_attachment_extension(self, attachment) -> str:
+        """Get appropriate file extension for attachment."""
+        # Use original file name extension if available
+        if attachment.file_name:
+            from pathlib import Path
+            ext = Path(attachment.file_name).suffix
+            if ext:
+                return ext
+        
+        # Use MIME type to determine extension
+        if attachment.mime_type:
+            mime_to_ext = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp',
+                'video/mp4': '.mp4',
+                'video/webm': '.webm',
+                'audio/mpeg': '.mp3',
+                'audio/ogg': '.ogg',
+                'application/pdf': '.pdf',
+                'text/plain': '.txt'
+            }
+            return mime_to_ext.get(attachment.mime_type, '.bin')
+        
+        # Default based on media type
+        from src.models.ticket import MediaType
+        type_to_ext = {
+            MediaType.IMAGE: '.jpg',
+            MediaType.VIDEO: '.mp4',
+            MediaType.AUDIO: '.mp3',
+            MediaType.DOCUMENT: '.bin'
+        }
+        return type_to_ext.get(attachment.media_type, '.bin')
     
     async def get_project_info(self) -> Dict[str, Any]:
         """

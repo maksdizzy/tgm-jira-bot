@@ -51,10 +51,10 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("stats", self._stats_command))
         self.application.add_handler(CommandHandler("health", self._health_command))
         
-        # Message handler for ticket creation
+        # Message handler for ticket creation - handle both text and media messages
         self.application.add_handler(
             MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
+                (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.AUDIO | filters.VOICE) & ~filters.COMMAND,
                 self._handle_message
             )
         )
@@ -167,14 +167,23 @@ Let's get started! 🚀"""
         try:
             self.stats["messages_processed"] += 1
             
+            # Extract media attachments first
+            media_attachments = self.message_processor.extract_media_attachments(update)
+            has_media = len(media_attachments) > 0
+            
+            # Handle messages with only media and #ticket hashtag
+            message_text = update.message.text or update.message.caption or ""
+            if not message_text and has_media:
+                message_text = "#ticket"  # Default text for media-only tickets
+            
             # Check if message contains ticket hashtag
-            if not self.message_processor.contains_ticket_hashtag(update.message.text):
+            if not self.message_processor.contains_ticket_hashtag(message_text):
                 return  # Ignore messages without #ticket
             
-            logger.info(f"Processing ticket request from user {update.effective_user.id}")
+            logger.info(f"Processing ticket request from user {update.effective_user.id} with {len(media_attachments)} attachments")
             
-            # Validate message
-            is_valid, error = self.message_processor.validate_message_for_ticket(update.message.text)
+            # Validate message with media context
+            is_valid, error = self.message_processor.validate_message_for_ticket(message_text, has_media)
             if not is_valid:
                 await update.message.reply_text(
                     self.message_processor.format_error_message(error),
@@ -183,9 +192,15 @@ Let's get started! 🚀"""
                 self.stats["errors"] += 1
                 return
             
-            # Send processing message
+            # Send processing message with media info
+            if has_media:
+                media_summary = self.message_processor.media_processor.get_attachment_summary(media_attachments)
+                processing_text = f"🔄 **Processing your ticket request...**\n\n📎 **Attachments**: {media_summary}\n\nPlease wait while I analyze your message and create a Jira ticket."
+            else:
+                processing_text = self.message_processor.format_processing_message()
+            
             processing_msg = await update.message.reply_text(
-                self.message_processor.format_processing_message(),
+                processing_text,
                 parse_mode=ParseMode.MARKDOWN
             )
             
@@ -225,17 +240,59 @@ Let's get started! 🚀"""
                 self.stats["errors"] += 1
                 return
             
+            # Download media files if present
+            downloaded_attachments = []
+            if media_attachments:
+                await processing_msg.edit_text(
+                    f"📥 **Downloading {len(media_attachments)} attachment(s)...**",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+                for attachment in media_attachments:
+                    if await self.message_processor.media_processor.download_media(self.application.bot, attachment):
+                        downloaded_attachments.append(attachment)
+                
+                logger.info(f"Downloaded {len(downloaded_attachments)}/{len(media_attachments)} attachments")
+            
+            # Add attachments to ticket data
+            if downloaded_attachments:
+                llm_response.ticket_data.attachments = downloaded_attachments
+            
             # Create Jira ticket
             ticket_response = await self.jira_client.create_ticket(llm_response.ticket_data)
             
             if ticket_response.success:
+                # Upload attachments if any
+                uploaded_count = 0
+                if downloaded_attachments and ticket_response.ticket_key:
+                    await processing_msg.edit_text(
+                        f"📤 **Uploading {len(downloaded_attachments)} attachment(s) to Jira...**",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    uploaded_count = await self.jira_client.upload_attachments(
+                        ticket_response.ticket_key,
+                        downloaded_attachments
+                    )
+                
                 # Success message
                 success_message = ticket_response.formatted_response
+                
+                # Add attachment info
+                if downloaded_attachments:
+                    if uploaded_count == len(downloaded_attachments):
+                        success_message += f"\n\n📎 **{uploaded_count} attachment(s) uploaded successfully**"
+                    else:
+                        success_message += f"\n\n⚠️ **{uploaded_count}/{len(downloaded_attachments)} attachment(s) uploaded**"
                 
                 # Add confidence info if available
                 if llm_response.confidence_score:
                     confidence_emoji = "🎯" if llm_response.confidence_score > 0.8 else "📊"
                     success_message += f"\n\n{confidence_emoji} Processing confidence: {llm_response.confidence_score:.0%}"
+                
+                # Clean up temporary files
+                if downloaded_attachments:
+                    self.message_processor.media_processor.cleanup_temp_files(downloaded_attachments)
                 
                 await processing_msg.edit_text(
                     success_message,
@@ -246,6 +303,10 @@ Let's get started! 🚀"""
                 logger.info(f"Successfully created ticket {ticket_response.ticket_key} for user {update.effective_user.id}")
                 
             else:
+                # Clean up temporary files on error
+                if downloaded_attachments:
+                    self.message_processor.media_processor.cleanup_temp_files(downloaded_attachments)
+                
                 # Error message
                 await processing_msg.edit_text(
                     ticket_response.formatted_response,
@@ -255,6 +316,10 @@ Let's get started! 🚀"""
                 logger.error(f"Failed to create ticket: {ticket_response.error_message}")
         
         except Exception as e:
+            # Clean up temporary files on unexpected error
+            if 'downloaded_attachments' in locals() and downloaded_attachments:
+                self.message_processor.media_processor.cleanup_temp_files(downloaded_attachments)
+            
             logger.error(f"Unexpected error handling message: {e}", exc_info=True)
             self.stats["errors"] += 1
             

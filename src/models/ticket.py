@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from enum import Enum
+from pathlib import Path
 
 
 class Priority(str, Enum):
@@ -24,6 +25,33 @@ class IssueType(str, Enum):
     NEW_FEATURE = "New Feature"
 
 
+class MediaType(str, Enum):
+    """Media file types supported for attachments."""
+    IMAGE = "image"
+    VIDEO = "video"
+    DOCUMENT = "document"
+    AUDIO = "audio"
+
+
+class MediaAttachment(BaseModel):
+    """Media attachment data from Telegram."""
+    
+    file_id: str = Field(..., description="Telegram file ID")
+    file_unique_id: str = Field(..., description="Telegram unique file ID")
+    file_name: Optional[str] = Field(None, description="Original file name")
+    file_size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: Optional[str] = Field(None, description="MIME type")
+    media_type: MediaType = Field(..., description="Type of media")
+    width: Optional[int] = Field(None, description="Image/video width")
+    height: Optional[int] = Field(None, description="Image/video height")
+    duration: Optional[int] = Field(None, description="Video/audio duration in seconds")
+    local_path: Optional[Path] = Field(None, description="Local file path after download")
+    jira_attachment_id: Optional[str] = Field(None, description="Jira attachment ID after upload")
+    
+    class Config:
+        use_enum_values = True
+
+
 class TicketData(BaseModel):
     """Structured ticket data extracted from message content."""
     
@@ -33,6 +61,7 @@ class TicketData(BaseModel):
     issue_type: IssueType = Field(default=IssueType.TASK, description="Type of issue")
     labels: List[str] = Field(default_factory=list, description="Relevant labels")
     components: List[str] = Field(default_factory=list, description="Affected components")
+    attachments: List[MediaAttachment] = Field(default_factory=list, description="Media attachments")
     
     class Config:
         use_enum_values = True
@@ -166,6 +195,7 @@ class LLMProcessingRequest(BaseModel):
     message_content: str = Field(..., description="Original message content")
     user_context: Optional[str] = Field(None, description="Additional user context")
     chat_context: Optional[str] = Field(None, description="Chat context information")
+    media_attachments: List[MediaAttachment] = Field(default_factory=list, description="Media attachments from message")
 
 
 class LLMProcessingResponse(BaseModel):
