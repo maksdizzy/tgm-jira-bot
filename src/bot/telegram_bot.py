@@ -144,12 +144,20 @@ Let's get started! 🚀"""
                     state = secrets.token_urlsafe(32)
                     oauth_url = self.jira_client.get_authorization_url(state)
                     auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({oauth_url})"
+                    logger.info(f"Generated OAuth URL: {oauth_url}")
                 except Exception as e:
-                    # Fallback to the auth endpoint
-                    auth_url = f"https://{self.settings.host.replace('http://', '').replace('https://', '')}:{self.settings.port}/auth/jira"
-                    if self.settings.host.startswith('http'):
-                        auth_url = f"{self.settings.host}:{self.settings.port}/auth/jira"
-                    auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({auth_url})"
+                    logger.error(f"Failed to generate OAuth URL: {e}")
+                    # Fallback: extract domain from webhook URL for proper external URL
+                    try:
+                        from urllib.parse import urlparse
+                        webhook_parsed = urlparse(self.settings.telegram_webhook_url)
+                        base_url = f"{webhook_parsed.scheme}://{webhook_parsed.netloc}"
+                        auth_url = f"{base_url}/auth/jira"
+                        auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({auth_url})"
+                        logger.info(f"Using fallback auth URL: {auth_url}")
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback URL generation failed: {fallback_error}")
+                        auth_help = f"\n\n🔑 **To authorize Jira:**\nVisit: `/auth/jira` endpoint"
             
             health_message = f"""🏥 **Health Status**
 
