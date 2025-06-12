@@ -237,6 +237,10 @@ class JiraClient:
             if 'refresh_token' in token:
                 self.refresh_token = token['refresh_token']
             
+            # For Jira Cloud, update accessible resources to ensure correct API base
+            if self.is_cloud:
+                await self._get_accessible_resources()
+            
             # Save tokens for persistence
             self._save_tokens()
             

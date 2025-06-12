@@ -138,7 +138,10 @@ Let's get started! 🚀"""
             # Add authentication help if needed
             auth_help = ""
             if jira_health.get("status") == "authentication_required":
-                auth_help = f"\n\n🔑 **To authorize Jira:**\nVisit: `{self.settings.host}:{self.settings.port}/auth/jira`"
+                auth_url = f"https://{self.settings.host.replace('http://', '').replace('https://', '')}:{self.settings.port}/auth/jira"
+                if self.settings.host.startswith('http'):
+                    auth_url = f"{self.settings.host}:{self.settings.port}/auth/jira"
+                auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({auth_url})"
             
             health_message = f"""🏥 **Health Status**
 
