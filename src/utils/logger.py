@@ -38,7 +38,7 @@ def setup_logging(
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[logging.StreamHandler()]
         )
-        logging.warning(f"Cannot write to logs directory {logs_dir}: {e}. Using stdout only.")
+        print(f"Warning: Cannot write to logs directory {logs_dir}: {e}. Using stdout only.")
         return
     
     # Default config path
@@ -50,6 +50,32 @@ def setup_logging(
         try:
             with open(config_path, 'r') as f:
                 config = yaml.safe_load(f)
+            
+            # Test if we can write to logs directory
+            can_write_logs = True
+            try:
+                test_file = Path(logs_dir) / ".write_test"
+                test_file.touch()
+                test_file.unlink()
+            except (PermissionError, OSError):
+                can_write_logs = False
+            
+            # Remove file handlers if we can't write to logs
+            if not can_write_logs:
+                # Remove file handler from handlers
+                if 'file' in config.get('handlers', {}):
+                    del config['handlers']['file']
+                
+                # Remove file handler from all loggers
+                for logger_config in config.get('loggers', {}).values():
+                    if 'handlers' in logger_config and 'file' in logger_config['handlers']:
+                        logger_config['handlers'] = [h for h in logger_config['handlers'] if h != 'file']
+                
+                # Remove file handler from root logger
+                if 'handlers' in config.get('root', {}) and 'file' in config['root']['handlers']:
+                    config['root']['handlers'] = [h for h in config['root']['handlers'] if h != 'file']
+                
+                print(f"Warning: Cannot write to logs directory {logs_dir}. File logging disabled.")
             
             # Override log level if provided
             if log_level:
