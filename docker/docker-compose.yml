@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  tgm-jira-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: tgm-jira-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      
+      # OpenRouter Configuration
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-openai/gpt-4-turbo}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      
+      # Jira OAuth 2.0 Configuration
+      - JIRA_CLOUD_URL=${JIRA_CLOUD_URL}
+      - JIRA_CLIENT_ID=${JIRA_CLIENT_ID}
+      - JIRA_CLIENT_SECRET=${JIRA_CLIENT_SECRET}
+      - JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY}
+      - JIRA_REDIRECT_URI=${JIRA_REDIRECT_URI:-http://localhost:8000/auth/callback}
+      - JIRA_ACCESS_TOKEN=${JIRA_ACCESS_TOKEN:-}
+      - JIRA_REFRESH_TOKEN=${JIRA_REFRESH_TOKEN:-}
+      
+      # Application Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - SECRET_KEY=${SECRET_KEY}
+    
+    volumes:
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    
+    env_file:
+      - ../.env
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - tgm-jira-network
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  tgm-jira-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
