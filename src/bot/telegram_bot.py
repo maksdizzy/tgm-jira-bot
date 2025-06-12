@@ -138,10 +138,18 @@ Let's get started! 🚀"""
             # Add authentication help if needed
             auth_help = ""
             if jira_health.get("status") == "authentication_required":
-                auth_url = f"https://{self.settings.host.replace('http://', '').replace('https://', '')}:{self.settings.port}/auth/jira"
-                if self.settings.host.startswith('http'):
-                    auth_url = f"{self.settings.host}:{self.settings.port}/auth/jira"
-                auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({auth_url})"
+                # Generate direct OAuth authorization URL
+                try:
+                    import secrets
+                    state = secrets.token_urlsafe(32)
+                    oauth_url = self.jira_client.get_authorization_url(state)
+                    auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({oauth_url})"
+                except Exception as e:
+                    # Fallback to the auth endpoint
+                    auth_url = f"https://{self.settings.host.replace('http://', '').replace('https://', '')}:{self.settings.port}/auth/jira"
+                    if self.settings.host.startswith('http'):
+                        auth_url = f"{self.settings.host}:{self.settings.port}/auth/jira"
+                    auth_help = f"\n\n🔑 **To authorize Jira:**\n[Click here to authenticate]({auth_url})"
             
             health_message = f"""🏥 **Health Status**
 
