@@ -45,15 +45,17 @@ COPY --from=builder /opt/venv /opt/venv
 # Create application directory
 WORKDIR /app
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown -R appuser:appuser /app
+# Create logs directory with proper permissions
+RUN mkdir -p /app/logs && \
+    chmod 777 /app/logs
 
 # Copy application code
 COPY src/ ./src/
 COPY config/ ./config/
 
-# Set ownership
-RUN chown -R appuser:appuser /app
+# Set ownership and ensure logs directory permissions
+RUN chown -R appuser:appuser /app && \
+    chmod 777 /app/logs
 
 # Switch to non-root user
 USER appuser

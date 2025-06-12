@@ -21,8 +21,25 @@ def setup_logging(
         log_level: Override log level
         logs_dir: Directory for log files
     """
-    # Create logs directory if it doesn't exist
-    Path(logs_dir).mkdir(exist_ok=True)
+    # Create logs directory if it doesn't exist with proper permissions
+    logs_path = Path(logs_dir)
+    logs_path.mkdir(parents=True, exist_ok=True)
+    
+    # Ensure the directory is writable
+    try:
+        # Test write permissions by creating a temporary file
+        test_file = logs_path / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+    except (PermissionError, OSError) as e:
+        # If we can't write to the logs directory, fall back to stdout only
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper() if log_level else 'INFO'),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        logging.warning(f"Cannot write to logs directory {logs_dir}: {e}. Using stdout only.")
+        return
     
     # Default config path
     if config_path is None:
@@ -42,27 +59,33 @@ def setup_logging(
             
             logging.config.dictConfig(config)
         except Exception as e:
-            # Fallback to basic configuration
+            # Fallback to basic configuration with error handling
+            handlers = [logging.StreamHandler()]
+            try:
+                handlers.append(logging.FileHandler(f'{logs_dir}/app.log'))
+            except (PermissionError, OSError) as file_error:
+                print(f"Warning: Cannot create log file {logs_dir}/app.log: {file_error}. Using stdout only.")
+            
             logging.basicConfig(
                 level=getattr(logging, log_level.upper() if log_level else 'INFO'),
                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.StreamHandler(),
-                    logging.FileHandler(f'{logs_dir}/app.log')
-                ]
+                handlers=handlers
             )
-            logging.warning(f"Failed to load logging config from {config_path}: {e}")
+            print(f"Warning: Failed to load logging config from {config_path}: {e}")
     else:
-        # Basic configuration if no config file found
+        # Basic configuration if no config file found with error handling
+        handlers = [logging.StreamHandler()]
+        try:
+            handlers.append(logging.FileHandler(f'{logs_dir}/app.log'))
+        except (PermissionError, OSError) as file_error:
+            print(f"Warning: Cannot create log file {logs_dir}/app.log: {file_error}. Using stdout only.")
+        
         logging.basicConfig(
             level=getattr(logging, log_level.upper() if log_level else 'INFO'),
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.StreamHandler(),
-                logging.FileHandler(f'{logs_dir}/app.log')
-            ]
+            handlers=handlers
         )
-        logging.warning(f"Logging config file not found at {config_path}, using basic configuration")
+        print(f"Warning: Logging config file not found at {config_path}, using basic configuration")
 
 
 def get_logger(name: str) -> logging.Logger:
